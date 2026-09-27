@@ -14,13 +14,13 @@ app.use(express.json());
 // ==========================================
 // 3. تفعيل المسارات (Routes)
 // ==========================================
-// استدعاء ملف تسجيل الدخول 
+// مسار تسجيل الدخول والمصادقة
 const authRoutes = require('./routes/auth'); 
 app.use('/api/auth', authRoutes);
 
-// استدعاء ملف الكورسات (شيل علامتين // اللي في الأول لو عندك ملف اسمه courses.js)
-// const courseRoutes = require('./routes/courses');
-// app.use('/api/courses', courseRoutes);
+// مسار الكورسات (مفعل بالكامل الآن)
+const courseRoutes = require('./routes/courses');
+app.use('/api/courses', courseRoutes);
 // ==========================================
 
 // 4. راوت تجريبي للتأكد إن السيرفر شغال
