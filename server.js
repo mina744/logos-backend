@@ -5,35 +5,38 @@ require('dotenv').config();
 
 const app = express();
 
-// حماية الـ CORS
-const corsOptions = {
-    origin: ['http://localhost:3000', 'http://127.0.0.1:5500', 'https://logos-center.vercel.app'],
-    credentials: true
-};
-app.use(cors(corsOptions));
+// 1. تفعيل CORS للسماح لـ Vercel بالاتصال بالسيرفر (بيحل مشكلة Cross-Origin)
+app.use(cors());
 
-// حماية حجم البيانات المتبادلة
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ limit: '5mb', extended: true }));
+// 2. السماح للسيرفر بقراءة البيانات المرسلة بصيغة JSON
+app.use(express.json());
 
-// الاتصال بقاعدة البيانات MongoDB Atlas (تم إزالة الإعدادات القديمة غير المدعومة)
-mongoose.connect(process.env.MONGO_URI)
-.then(() => {
-    console.log('Connected to MongoDB Atlas successfully ✅');
-})
-.catch((err) => {
-    console.error('Database connection error ❌', err);
+// ==========================================
+// 👇 حط هنا مسارات الأكواد (Routes) بتاعتك 👇
+// ==========================================
+// مثال على استدعاء ملفات الـ routes لو إنت فاصلها:
+// const authRoutes = require('./routes/auth');
+// const courseRoutes = require('./routes/courses');
+// app.use('/api/auth', authRoutes);
+// app.use('/api/courses', courseRoutes);
+
+// ==========================================
+// 👆 ------------------------------------ 👆
+// ==========================================
+
+// راوت تجريبي للتأكد إن السيرفر شغال لما تفتحه من المتصفح
+app.get('/', (req, res) => {
+    res.send('Logos Backend is Running Successfully!');
 });
 
-// المسارات الأساسية (Routes)
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/courses', require('./routes/courses'));
-app.use('/api/lectures', require('./routes/lectures'));
-app.use('/api/attendance', require('./routes/attendance'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/stats', require('./routes/stats'));
+// الاتصال بقاعدة البيانات (MongoDB) - تأكد من إضافة رابط قاعدة بياناتك الصحيح
+const MONGO_URI = process.env.MONGO_URI || 'mongodb_url_here'; // استبدل بـ URL المونجو لو مش بتستخدم ملف .env
+mongoose.connect(MONGO_URI)
+    .then(() => console.log('✅ Connected to MongoDB'))
+    .catch((err) => console.error('❌ MongoDB connection error:', err));
 
+// 3. استخدام بورت ديناميكي (أهم خطوة لحل خطأ 502 في Railway)
 const PORT = process.env.PORT || 5000;
-app.server = app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT} 🚀`);
+app.listen(PORT, () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
 });
