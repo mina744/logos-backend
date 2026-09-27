@@ -32,19 +32,34 @@ const verifyAdmin = (req, res, next) => {
 router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
+        
+        // جلب المحاضرة لمعرفة الكورس التابعة له (عشان الـ Schema مديضربش إيرور)
+        const lecture = await Lecture.findById(lectureId);
+        if (!lecture) {
+            return res.status(404).json({ message: 'المحاضرة غير موجودة' });
+        }
+
         const code = Math.floor(1000 + Math.random() * 9000).toString();
         
         let attendance = await Attendance.findOne({ lectureId });
         if (!attendance) {
-            attendance = new Attendance({ lectureId, attendanceCode: code, students: [] });
+            // إنشاء سجل حضور جديد مع تمرير الـ course والـ lectureId
+            attendance = new Attendance({ 
+                lectureId: lectureId, 
+                course: lecture.courseId, // جلبنا الكورس أوتوماتيكياً
+                attendanceCode: code, 
+                students: [] 
+            });
         } else {
             attendance.attendanceCode = code;
         }
+        
         await attendance.save();
         res.status(200).json({ message: 'تم توليد الكود بنجاح', code });
     } catch (err) {
         console.error('خطأ في توليد الكود:', err);
-        res.status(500).json({ message: 'خطأ في السيرفر' });
+        // إرجاع رسالة الخطأ الأصلية من قاعدة البيانات لتسهيل حل أي مشكلة
+        res.status(500).json({ message: err.message || 'خطأ في السيرفر' });
     }
 });
 
@@ -70,11 +85,11 @@ router.post('/record', verifyToken, async (req, res) => {
         res.status(200).json({ message: 'تم تسجيل حضورك بنجاح' });
     } catch (err) {
         console.error('خطأ في تسجيل الحضور:', err);
-        res.status(500).json({ message: 'خطأ في السيرفر' });
+        res.status(500).json({ message: err.message || 'خطأ في السيرفر' });
     }
 });
 
-// 3. تقرير الحضور للأدمن (مع دعم جلب الكورس آلياً)
+// 3. تقرير الحضور للأدمن
 router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
@@ -109,15 +124,26 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
             return res.status(400).json({ message: 'جميع البيانات مطلوبة' });
         }
 
+        // جلب المحاضرة لمعرفة الكورس التابعة له
+        const lecture = await Lecture.findById(lectureId);
+        if (!lecture) {
+            return res.status(404).json({ message: 'المحاضرة غير موجودة' });
+        }
+
         let attendance = await Attendance.findOne({ lectureId });
         
         if (!attendance) {
-            attendance = new Attendance({ lectureId, students: [] });
+            // إنشاء السجل مع تمرير الـ course
+            attendance = new Attendance({ 
+                lectureId: lectureId,
+                course: lecture.courseId,
+                students: [] 
+            });
         }
 
         let studentRecord = attendance.students.find(s => s.studentId && s.studentId.toString() === studentId);
         if (studentRecord) {
-            studentRecord.status = action; // 'present' أو 'absent'
+            studentRecord.status = action;
         } else {
             attendance.students.push({ studentId, status: action });
         }
@@ -126,7 +152,7 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
         res.status(200).json({ message: 'تم التحديث يدوياً بنجاح' });
     } catch (err) {
         console.error('خطأ في التسجيل اليدوي:', err);
-        res.status(500).json({ message: 'خطأ في السيرفر' });
+        res.status(500).json({ message: err.message || 'خطأ في السيرفر' });
     }
 });
 
