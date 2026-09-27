@@ -11,6 +11,10 @@ app.use(cors());
 // 2. السماح للسيرفر بقراءة البيانات المرسلة
 app.use(express.json());
 
+
+
+
+
 // ==========================================
 // 3. تفعيل المسارات (Routes)
 // ==========================================
@@ -18,10 +22,23 @@ app.use(express.json());
 const authRoutes = require('./routes/auth'); 
 app.use('/api/auth', authRoutes);
 
-// مسار الكورسات (مفعل بالكامل الآن)
+// مسار الكورسات
 const courseRoutes = require('./routes/courses');
 app.use('/api/courses', courseRoutes);
+
+// مسار المحاضرات (تمت إضافته هنا لحل المشكلة)
+const lectureRoutes = require('./routes/lectures');
+app.use('/api/lectures', lectureRoutes);
 // ==========================================
+
+
+
+
+
+
+
+
+
 
 // 4. راوت تجريبي للتأكد إن السيرفر شغال
 app.get('/', (req, res) => {
