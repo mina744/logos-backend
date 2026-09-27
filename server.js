@@ -32,7 +32,9 @@ app.use('/api/lectures', lectureRoutes);
 // ==========================================
 
 
-
+// مسار الحضور (Attendance)
+const attendanceRoutes = require('./routes/attendance');
+app.use('/api/attendance', attendanceRoutes);
 
 
 
