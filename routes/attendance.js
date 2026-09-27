@@ -123,24 +123,32 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
 });
 
 // إحصائيات الحضور والغياب للطالب الحالي
+// إحصائيات الحضور والغياب الدقيقة للطالب الحالي
 router.get('/student-stats', verifyToken, async (req, res) => {
     try {
         const studentId = req.user.userId;
+        
+        // 1. جلب كل المحاضرات الموجودة في المنصة لحساب العدد الإجمالي
+        const allLectures = await Lecture.find();
+        const totalLecturesCount = allLectures.length;
+
+        // 2. جلب سجلات حضور الطالب
         const attendanceRecords = await Attendance.find({ 'students.studentId': studentId });
         
         let presentCount = 0;
-        let absentCount = 0;
-
         attendanceRecords.forEach(record => {
             const studentRecord = record.students.find(s => s.studentId.toString() === studentId);
-            if (studentRecord) {
-                if (studentRecord.status === 'present') presentCount++;
-                else absentCount++;
+            if (studentRecord && studentRecord.status === 'present') {
+                presentCount++;
             }
         });
 
+        // المحاضرات التي غبت عنها هي الإجمالي ناقص ما حضره (ولا تقل عن صفر)
+        let absentCount = Math.max(0, totalLecturesCount - presentCount);
+
         res.status(200).json({ presentCount, absentCount });
     } catch (error) {
+        console.error('خطأ في جلب إحصائيات الحضور:', error);
         res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
