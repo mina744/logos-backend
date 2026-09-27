@@ -6,15 +6,13 @@ const Attendance = require('../models/Attendance');
 const User = require('../models/User');
 const { verifyToken, verifyAdmin } = require('../middleware/authMiddleware');
 
-// 1. جلب كل الكورسات (الأدمن بيشوف كل الكورسات، الطالب بيشوف الكورسات المشترك فيها بس)
+// 1. جلب كل الكورسات (الأدمن يشاهد كل الكورسات، والطالب يشاهد كورساته فقط)
 router.get('/', verifyToken, async (req, res) => {
     try {
         let courses;
         if (req.user.role === 'admin') {
-            // الأدمن يشوف كل الكورسات
             courses = await Course.find();
         } else {
-            // الطالب يشوف الكورسات اللي متسجلة في حسابه فقط
             const user = await User.findById(req.user.userId).populate('enrolledCourses');
             if (user) {
                 courses = user.enrolledCourses;
@@ -29,15 +27,29 @@ router.get('/', verifyToken, async (req, res) => {
     }
 });
 
-// 2. إنشاء كورس جديد (للأدمن فقط)
+// 2. جلب كورس واحد بواسطة الـ ID (مهم جداً لصفحة course.html)
+router.get('/:id', verifyToken, async (req, res) => {
+    try {
+        const course = await Course.findById(req.params.id);
+        if (!course) {
+            return res.status(404).json({ message: 'الكورس غير موجود' });
+        }
+        res.status(200).json(course);
+    } catch (error) {
+        console.error('خطأ في جلب تفاصيل الكورس:', error);
+        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+    }
+});
+
+// 3. إنشاء كورس جديد (للأدمن فقط)
 router.post('/', verifyAdmin, async (req, res) => {
     try {
-        const { title } = req.body;
+        const { title, description } = req.body;
         if (!title) {
             return res.status(400).json({ message: 'اسم الكورس مطلوب' });
         }
 
-        const newCourse = new Course({ title });
+        const newCourse = new Course({ title, description });
         await newCourse.save();
         
         res.status(201).json({ message: 'تم إنشاء الكورس بنجاح', course: newCourse });
@@ -47,18 +59,13 @@ router.post('/', verifyAdmin, async (req, res) => {
     }
 });
 
-// 3. حذف كورس بالكامل مع كل ملحقاته (للأدمن فقط)
+// 4. حذف كورس بالكامل مع كل ملحقاته (للأدمن فقط)
 router.delete('/:id', verifyAdmin, async (req, res) => {
     try {
         const courseId = req.params.id;
 
-        // الخطوة 1: حذف كل سجلات الحضور المرتبطة بالكورس ده (عشان الداتا بيز تفضل نظيفة)
         await Attendance.deleteMany({ course: courseId });
-
-        // الخطوة 2: حذف كل المحاضرات المرتبطة بالكورس ده
         await Lecture.deleteMany({ courseId: courseId });
-
-        // الخطوة 3: أخيراً، حذف الكورس نفسه
         const deletedCourse = await Course.findByIdAndDelete(courseId);
         
         if (!deletedCourse) {
