@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Attendance = require('../models/Attendance');
 const Lecture = require('../models/Lecture');
 const User = require('../models/User');
@@ -7,22 +8,34 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
 
+// 🚀 مسار مؤقت لإصلاح مشكلة قاعدة البيانات (امسح الداتا القديمة)
+router.get('/fix-db', async (req, res) => {
+    try {
+        await mongoose.connection.collection('attendances').drop();
+        res.status(200).json({ message: 'تم تنظيف قاعدة البيانات وحذف القواعد القديمة بنجاح! يمكنك الآن تجربة توليد الكود.' });
+    } catch (err) {
+        res.status(200).json({ message: 'تم التنظيف مسبقاً أو الجدول غير موجود.', error: err.message });
+    }
+});
+
+// Middleware للتحقق من التوكن
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'غير مصرح، التوكن مفقود' });
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ message: 'التوكن غير صالح' });
+        if (err) return res.status(403).json({ message: 'التوكن غير صالح أو انتهت صلاحيته' });
         req.user = user;
         next();
     });
 };
 
+// Middleware للتحقق من الأدمن
 const verifyAdmin = (req, res, next) => {
     verifyToken(req, res, () => {
         if (req.user && req.user.role === 'admin') next();
-        else res.status(403).json({ message: 'غير مصرح' });
+        else res.status(403).json({ message: 'غير مصرح، للأدمن فقط' });
     });
 };
 
