@@ -99,18 +99,24 @@ router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
 });
 
 // تسجيل يدوي من الأدمن
+// تسجيل يدوي من الأدمن
 router.post('/manual-record', verifyAdmin, async (req, res) => {
     try {
         const { studentId, lectureId, action } = req.body;
+        
+        if (!studentId || !lectureId || !action) {
+            return res.status(400).json({ message: 'جميع البيانات مطلوبة' });
+        }
+
         let attendance = await Attendance.findOne({ lectureId });
         
         if (!attendance) {
             attendance = new Attendance({ lectureId, students: [] });
         }
 
-        let studentRecord = attendance.students.find(s => s.studentId.toString() === studentId);
+        let studentRecord = attendance.students.find(s => s.studentId && s.studentId.toString() === studentId);
         if (studentRecord) {
-            studentRecord.status = action;
+            studentRecord.status = action; // 'present' أو 'absent'
         } else {
             attendance.students.push({ studentId, status: action });
         }
@@ -118,10 +124,10 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
         await attendance.save();
         res.status(200).json({ message: 'تم التحديث يدوياً بنجاح' });
     } catch (err) {
+        console.error('خطأ في التسجيل اليدوي:', err);
         res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
-
 // إحصائيات الحضور والغياب للطالب الحالي
 // إحصائيات الحضور والغياب الدقيقة للطالب الحالي
 router.get('/student-stats', verifyToken, async (req, res) => {
