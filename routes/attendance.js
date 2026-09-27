@@ -1,85 +1,147 @@
 const express = require('express');
 const router = express.Router();
 const Attendance = require('../models/Attendance');
-const User = require('../models/User');
 const Lecture = require('../models/Lecture');
-const { verifyToken, verifyAdmin } = require('../middleware/authMiddleware');
+const User = require('../models/User');
+const jwt = require('jsonwebtoken');
 
-// 1. تسجيل الحضور (للطالب) - يتطلب الكود السري
+const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
+
+// Middleware للتحقق من التوكن
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'غير مصرح، التوكن مفقود' });
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ message: 'التوكن غير صالح أو انتهت صلاحيته' });
+        req.user = user;
+        next();
+    });
+};
+
+// Middleware للتحقق من الأدمن
+const verifyAdmin = (req, res, next) => {
+    verifyToken(req, res, () => {
+        if (req.user && req.user.role === 'admin') next();
+        else res.status(403).json({ message: 'غير مصرح، للأدمن فقط' });
+    });
+};
+
+// توليد كود حضور للمحاضرة (أدمن)
+router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
+    try {
+        const { lectureId } = req.params;
+        const code = Math.floor(1000 + Math.random() * 9000).toString(); // كود 4 أرقام
+        
+        let attendance = await Attendance.findOne({ lectureId });
+        if (!attendance) {
+            attendance = new Attendance({ lectureId, attendanceCode: code, students: [] });
+        } else {
+            attendance.attendanceCode = code;
+        }
+        await attendance.save();
+        res.status(200).json({ message: 'تم توليد الكود بنجاح', code });
+    } catch (err) {
+        res.status(500).json({ message: 'خطأ في السيرفر' });
+    }
+});
+
+// تسجيل الحضور للطالب بالكود
 router.post('/record', verifyToken, async (req, res) => {
     try {
         const { courseId, lectureId, code } = req.body;
         const studentId = req.user.userId;
 
-        const lecture = await Lecture.findById(lectureId);
-        if (!lecture.attendanceCode) {
-            return res.status(400).json({ message: 'لم يتم تفعيل الحضور لهذه المحاضرة بعد.' });
-        }
-        if (lecture.attendanceCode !== code) {
-            return res.status(400).json({ message: 'الكود غير صحيح! تأكد من الكود المكتوب على السبورة.' });
+        const attendance = await Attendance.findOne({ lectureId });
+        if (!attendance || attendance.attendanceCode !== code) {
+            return res.status(400).json({ message: 'كود الحضور غير صحيح' });
         }
 
-        const existingAttendance = await Attendance.findOne({ student: studentId, lecture: lectureId });
-        if (existingAttendance) {
-            return res.status(400).json({ message: 'لقد قمت بتسجيل حضور هذه المحاضرة مسبقاً!' });
-        }
-
-        const attendance = new Attendance({ student: studentId, course: courseId, lecture: lectureId, status: 'present' });
-        await attendance.save();
-        res.status(201).json({ message: 'تم تسجيل حضورك بنجاح 🟢' });
-    } catch (error) {
-        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
-    }
-});
-
-// 2. تسجيل أو إلغاء حضور يدوياً (للأدمن)
-router.post('/manual-record', verifyAdmin, async (req, res) => {
-    try {
-        const { studentId, courseId, lectureId, action } = req.body; // action: 'present' or 'absent'
-        
-        if (action === 'present') {
-            const existing = await Attendance.findOne({ student: studentId, lecture: lectureId });
-            if (!existing) {
-                await new Attendance({ student: studentId, course: courseId, lecture: lectureId, status: 'present' }).save();
-            }
+        let studentRecord = attendance.students.find(s => s.studentId.toString() === studentId);
+        if (studentRecord) {
+            studentRecord.status = 'present';
         } else {
-            await Attendance.findOneAndDelete({ student: studentId, lecture: lectureId });
+            attendance.students.push({ studentId, status: 'present' });
         }
-        res.status(200).json({ message: 'تم تحديث حالة الحضور يدوياً' });
-    } catch (error) {
-        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+
+        await attendance.save();
+        res.status(200).json({ message: 'تم تسجيل حضورك بنجاح' });
+    } catch (err) {
+        res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
 
-// 3. إنشاء كود حضور جديد للمحاضرة (للأدمن)
-router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
-    try {
-        const code = Math.floor(1000 + Math.random() * 9000).toString(); // كود عشوائي من 4 أرقام
-        await Lecture.findByIdAndUpdate(req.params.lectureId, { attendanceCode: code });
-        res.status(200).json({ code, message: 'تم إنشاء الكود بنجاح' });
-    } catch (error) {
-        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
-    }
-});
-
-// 4. تقرير الحضور المفصل
+// تقرير الحضور للأدمن
 router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
-        const { courseId, lectureId } = req.params;
-        const lecture = await Lecture.findById(lectureId);
-        const students = await User.find({ role: 'student', enrolledCourses: courseId }).select('phone');
-        const attendanceRecords = await Attendance.find({ lecture: lectureId });
-        const presentStudentIds = attendanceRecords.map(a => a.student.toString());
+        const { lectureId } = req.params;
+        const attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'phone');
+        
+        const allStudents = await User.find({ role: 'student' }).select('phone');
+        
+        const report = allStudents.map(student => {
+            const found = attendance ? attendance.students.find(s => s.studentId && s.studentId._id.toString() === student._id.toString()) : null;
+            return {
+                studentId: student._id,
+                phone: student.phone,
+                status: found ? found.status : 'absent'
+            };
+        });
 
-        const report = students.map(student => ({
-            studentId: student._id,
-            phone: student.phone,
-            status: presentStudentIds.includes(student._id.toString()) ? 'present' : 'absent'
-        }));
+        res.status(200).json({
+            attendanceCode: attendance ? attendance.attendanceCode : null,
+            report
+        });
+    } catch (err) {
+        res.status(500).json({ message: 'خطأ في جلب التقرير' });
+    }
+});
 
-        res.status(200).json({ attendanceCode: lecture.attendanceCode, report });
+// تسجيل يدوي من الأدمن
+router.post('/manual-record', verifyAdmin, async (req, res) => {
+    try {
+        const { studentId, lectureId, action } = req.body;
+        let attendance = await Attendance.findOne({ lectureId });
+        
+        if (!attendance) {
+            attendance = new Attendance({ lectureId, students: [] });
+        }
+
+        let studentRecord = attendance.students.find(s => s.studentId.toString() === studentId);
+        if (studentRecord) {
+            studentRecord.status = action;
+        } else {
+            attendance.students.push({ studentId, status: action });
+        }
+
+        await attendance.save();
+        res.status(200).json({ message: 'تم التحديث يدوياً بنجاح' });
+    } catch (err) {
+        res.status(500).json({ message: 'خطأ في السيرفر' });
+    }
+});
+
+// إحصائيات الحضور والغياب للطالب الحالي
+router.get('/student-stats', verifyToken, async (req, res) => {
+    try {
+        const studentId = req.user.userId;
+        const attendanceRecords = await Attendance.find({ 'students.studentId': studentId });
+        
+        let presentCount = 0;
+        let absentCount = 0;
+
+        attendanceRecords.forEach(record => {
+            const studentRecord = record.students.find(s => s.studentId.toString() === studentId);
+            if (studentRecord) {
+                if (studentRecord.status === 'present') presentCount++;
+                else absentCount++;
+            }
+        });
+
+        res.status(200).json({ presentCount, absentCount });
     } catch (error) {
-        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+        res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
 
