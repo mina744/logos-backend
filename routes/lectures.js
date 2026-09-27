@@ -1,79 +1,78 @@
 const express = require('express');
 const router = express.Router();
-const Lecture = require('../models/Lecture'); // تأكد أن المسار مطابق لمكان مجلد models عندك
+const Lecture = require('../models/Lecture');
+const Course = require('../models/Course');
+const jwt = require('jsonwebtoken');
 
-// 1. مسار إضافة محاضرة جديدة (Create - POST)
-router.post('/', async (req, res) => {
+const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
+
+// Middleware للتحقق من التوكن
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'غير مصرح، التوكن مفقود' });
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ message: 'التوكن غير صالح' });
+        req.user = user;
+        next();
+    });
+};
+
+const verifyAdmin = (req, res, next) => {
+    verifyToken(req, res, () => {
+        if (req.user && req.user.role === 'admin') next();
+        else res.status(403).json({ message: 'غير مصرح، للأدمن فقط' });
+    });
+};
+
+// 1. جلب محاضرات كورس معين
+router.get('/:courseId', verifyToken, async (req, res) => {
     try {
-        const { title, videoUrl, courseId } = req.body;
+        const lectures = await Lecture.find({ courseId: req.params.courseId });
+        res.status(200).json(lectures);
+    } catch (err) {
+        console.error('خطأ في جلب المحاضرات:', err);
+        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+    }
+});
 
-        // التحقق من وصول البيانات الأساسية
-        if (!title || !videoUrl || !courseId) {
-            return res.status(400).json({ message: 'الرجاء إدخال عنوان المحاضرة ورابط الفيديو' });
+// 2. إضافة محاضرة جديدة لكورس معين
+router.post('/:courseId', verifyAdmin, async (req, res) => {
+    try {
+        const { title, videoUrl } = req.body;
+        const courseId = req.params.courseId; // جلب الـ ID من الرابط
+
+        if (!title || !videoUrl) {
+            return res.status(400).json({ message: 'العنوان ورابط الفيديو مطلوبان' });
         }
 
+        // إنشاء المحاضرة وربطها بالكورس
         const newLecture = new Lecture({
+            courseId: courseId,
             title,
-            videoUrl,
-            courseId
+            videoUrl
         });
 
         await newLecture.save();
         res.status(201).json({ message: 'تم إضافة المحاضرة بنجاح', lecture: newLecture });
-
     } catch (error) {
-        console.error('خطأ في الإضافة:', error);
-        res.status(500).json({ message: 'حدث خطأ في السيرفر', error: error.message });
+        console.error('خطأ في إضافة المحاضرة:', error);
+        res.status(500).json({ message: error.message || 'حدث خطأ في السيرفر' });
     }
 });
 
-// 2. مسار جلب محاضرات كورس معين (Read - GET)
-router.get('/:courseId', async (req, res) => {
-    try {
-        const lectures = await Lecture.find({ courseId: req.params.courseId });
-        res.status(200).json(lectures);
-    } catch (error) {
-        console.error('خطأ في الجلب:', error);
-        res.status(500).json({ message: 'حدث خطأ في السيرفر', error: error.message });
-    }
-});
-
-// 3. مسار تعديل بيانات محاضرة (Update - PUT)
-router.put('/:id', async (req, res) => {
-    try {
-        const { title, videoUrl } = req.body;
-        
-        // التحديث وإرجاع البيانات الجديدة (new: true)
-        const updatedLecture = await Lecture.findByIdAndUpdate(
-            req.params.id, 
-            { title, videoUrl }, 
-            { new: true } 
-        );
-        
-        if (!updatedLecture) {
-            return res.status(404).json({ message: 'المحاضرة غير موجودة' });
-        }
-        
-        res.status(200).json({ message: 'تم التعديل بنجاح', lecture: updatedLecture });
-    } catch (error) {
-        console.error('خطأ في التعديل:', error);
-        res.status(500).json({ message: 'حدث خطأ في السيرفر', error: error.message });
-    }
-});
-
-// 4. مسار حذف محاضرة (Delete - DELETE)
-router.delete('/:id', async (req, res) => {
+// 3. حذف محاضرة
+router.delete('/:id', verifyAdmin, async (req, res) => {
     try {
         const deletedLecture = await Lecture.findByIdAndDelete(req.params.id);
-        
         if (!deletedLecture) {
             return res.status(404).json({ message: 'المحاضرة غير موجودة' });
         }
-        
         res.status(200).json({ message: 'تم حذف المحاضرة بنجاح' });
-    } catch (error) {
-        console.error('خطأ في الحذف:', error);
-        res.status(500).json({ message: 'حدث خطأ في السيرفر', error: error.message });
+    } catch (err) {
+        console.error('خطأ في حذف المحاضرة:', err);
+        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
     }
 });
 
