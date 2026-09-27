@@ -5,7 +5,7 @@ require('dotenv').config();
 
 const app = express();
 
-// 1. تفعيل CORS للسماح لـ Vercel بالاتصال بالسيرفر (بيحل مشكلة Cross-Origin)
+// 1. تفعيل CORS للسماح لـ Vercel بالاتصال بالسيرفر
 app.use(cors());
 
 // 2. السماح للسيرفر بقراءة البيانات المرسلة بصيغة JSON
@@ -19,7 +19,6 @@ app.use(express.json());
 // const courseRoutes = require('./routes/courses');
 // app.use('/api/auth', authRoutes);
 // app.use('/api/courses', courseRoutes);
-
 // ==========================================
 // 👆 ------------------------------------ 👆
 // ==========================================
@@ -30,13 +29,16 @@ app.get('/', (req, res) => {
 });
 
 // الاتصال بقاعدة البيانات (MongoDB) - تأكد من إضافة رابط قاعدة بياناتك الصحيح
-const MONGO_URI = process.env.MONGO_URI || 'mongodb_url_here'; // استبدل بـ URL المونجو لو مش بتستخدم ملف .env
+const MONGO_URI = process.env.MONGO_URI || 'mongodb_url_here'; 
 mongoose.connect(MONGO_URI)
     .then(() => console.log('✅ Connected to MongoDB'))
     .catch((err) => console.error('❌ MongoDB connection error:', err));
 
-// 3. استخدام بورت ديناميكي (أهم خطوة لحل خطأ 502 في Railway)
+// 3. استخدام بورت ديناميكي لـ Railway
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
 });
+
+// تعليق إضافي لإجبار Railway على عمل Restart للاتصال بقاعدة البيانات بعد فتح الـ IP
+// Trigger Server Restart - Connection Fix
