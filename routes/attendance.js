@@ -28,7 +28,7 @@ const verifyAdmin = (req, res, next) => {
     });
 };
 
-// توليد كود حضور للمحاضرة (أدمن)
+// 1. توليد كود حضور للمحاضرة
 router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
@@ -48,7 +48,7 @@ router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
     }
 });
 
-// تسجيل الحضور للطالب بالكود
+// 2. تسجيل الحضور للطالب بالكود
 router.post('/record', verifyToken, async (req, res) => {
     try {
         const { lectureId, code } = req.body;
@@ -74,11 +74,11 @@ router.post('/record', verifyToken, async (req, res) => {
     }
 });
 
-// تقرير الحضور للأدمن
+// 3. تقرير الحضور للأدمن (مع دعم جلب الكورس آلياً)
 router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
-        const attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'phone');
+        let attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'phone');
         const allStudents = await User.find({ role: 'student' }).select('phone');
         
         const report = allStudents.map(student => {
@@ -100,14 +100,13 @@ router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     }
 });
 
-// تسجيل يدوي من الأدمن (تم تحديثه ليدعم استقبال البيانات بمرونة تامة)
+// 4. تسجيل يدوي من الأدمن
 router.post('/manual-record', verifyAdmin, async (req, res) => {
     try {
         const { studentId, lectureId, action } = req.body;
         
         if (!studentId || !lectureId || !action) {
-            console.log('بيانات ناقصة في التسجيل اليدوي:', req.body);
-            return res.status(400).json({ message: 'جميع البيانات مطلوبة (studentId, lectureId, action)' });
+            return res.status(400).json({ message: 'جميع البيانات مطلوبة' });
         }
 
         let attendance = await Attendance.findOne({ lectureId });
@@ -126,12 +125,12 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
         await attendance.save();
         res.status(200).json({ message: 'تم التحديث يدوياً بنجاح' });
     } catch (err) {
-        console.error('خطأ في التسجيل اليدوي (Server Catch):', err);
+        console.error('خطأ في التسجيل اليدوي:', err);
         res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
 
-// إحصائيات الحضور والغياب الدقيقة للطالب الحالي
+// 5. إحصائيات الحضور والغياب للطالب
 router.get('/student-stats', verifyToken, async (req, res) => {
     try {
         const studentId = req.user.userId;
