@@ -2,12 +2,34 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const { verifyAdmin } = require('../middleware/authMiddleware');
 
-// سري للـ JWT
 const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
 
-// 1. تسجيل حساب جديد (Student أو Admin)
+// Middleware للتحقق من التوكن
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'غير مصرح، التوكن مفقود' });
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ message: 'التوكن غير صالح أو انتهت صلاحيته' });
+        req.user = user;
+        next();
+    });
+};
+
+// Middleware للتحقق من صلاحية الأدمن
+const verifyAdmin = (req, res, next) => {
+    verifyToken(req, res, () => {
+        if (req.user && req.user.role === 'admin') {
+            next();
+        } else {
+            res.status(403).json({ message: 'غير مصرح، هذه الصلاحية للأدمن فقط' });
+        }
+    });
+};
+
+// 1. تسجيل حساب جديد
 router.post('/register', async (req, res) => {
     try {
         const { phone, password, role } = req.body;
@@ -35,7 +57,7 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// 2. تسجيل الدخول وإصدار JWT Token
+// 2. تسجيل الدخول
 router.post('/login', async (req, res) => {
     try {
         const { phone, password } = req.body;
@@ -73,7 +95,21 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// 3. مسار جلب كل المستخدمين (خاص بالأدمن لحساب إجمالي الطلاب)
+// 3. مسار جلب بيانات الملف الشخصي للمستخدم الحالي
+router.get('/profile', verifyToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({ message: 'المستخدم غير موجود' });
+        }
+        res.status(200).json(user);
+    } catch (error) {
+        console.error('خطأ في جلب الملف الشخصي:', error);
+        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+    }
+});
+
+// 4. مسار جلب كل المستخدمين (لإحصائيات الأدمن)
 router.get('/users', verifyAdmin, async (req, res) => {
     try {
         const users = await User.find().select('-password');
