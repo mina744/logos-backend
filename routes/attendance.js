@@ -7,24 +7,22 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
 
-// Middleware للتحقق من التوكن
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'غير مصرح، التوكن مفقود' });
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ message: 'التوكن غير صالح أو انتهت صلاحيته' });
+        if (err) return res.status(403).json({ message: 'التوكن غير صالح' });
         req.user = user;
         next();
     });
 };
 
-// Middleware للتحقق من الأدمن
 const verifyAdmin = (req, res, next) => {
     verifyToken(req, res, () => {
         if (req.user && req.user.role === 'admin') next();
-        else res.status(403).json({ message: 'غير مصرح، للأدمن فقط' });
+        else res.status(403).json({ message: 'غير مصرح' });
     });
 };
 
@@ -32,34 +30,26 @@ const verifyAdmin = (req, res, next) => {
 router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
-        
-        // جلب المحاضرة لمعرفة الكورس التابعة له (عشان الـ Schema مديضربش إيرور)
         const lecture = await Lecture.findById(lectureId);
-        if (!lecture) {
-            return res.status(404).json({ message: 'المحاضرة غير موجودة' });
-        }
+        if (!lecture) return res.status(404).json({ message: 'المحاضرة غير موجودة' });
 
         const code = Math.floor(1000 + Math.random() * 9000).toString();
         
         let attendance = await Attendance.findOne({ lectureId });
         if (!attendance) {
-            // إنشاء سجل حضور جديد مع تمرير الـ course والـ lectureId
             attendance = new Attendance({ 
                 lectureId: lectureId, 
-                course: lecture.courseId, // جلبنا الكورس أوتوماتيكياً
+                courseId: lecture.courseId || lecture.course, 
                 attendanceCode: code, 
                 students: [] 
             });
         } else {
             attendance.attendanceCode = code;
         }
-        
         await attendance.save();
         res.status(200).json({ message: 'تم توليد الكود بنجاح', code });
     } catch (err) {
-        console.error('خطأ في توليد الكود:', err);
-        // إرجاع رسالة الخطأ الأصلية من قاعدة البيانات لتسهيل حل أي مشكلة
-        res.status(500).json({ message: err.message || 'خطأ في السيرفر' });
+        res.status(500).json({ message: err.message });
     }
 });
 
@@ -84,8 +74,7 @@ router.post('/record', verifyToken, async (req, res) => {
         await attendance.save();
         res.status(200).json({ message: 'تم تسجيل حضورك بنجاح' });
     } catch (err) {
-        console.error('خطأ في تسجيل الحضور:', err);
-        res.status(500).json({ message: err.message || 'خطأ في السيرفر' });
+        res.status(500).json({ message: err.message });
     }
 });
 
@@ -110,8 +99,7 @@ router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
             report
         });
     } catch (err) {
-        console.error('خطأ في جلب التقرير:', err);
-        res.status(500).json({ message: 'خطأ في جلب التقرير' });
+        res.status(500).json({ message: err.message });
     }
 });
 
@@ -119,24 +107,16 @@ router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
 router.post('/manual-record', verifyAdmin, async (req, res) => {
     try {
         const { studentId, lectureId, action } = req.body;
-        
-        if (!studentId || !lectureId || !action) {
-            return res.status(400).json({ message: 'جميع البيانات مطلوبة' });
-        }
+        if (!studentId || !lectureId || !action) return res.status(400).json({ message: 'البيانات ناقصة' });
 
-        // جلب المحاضرة لمعرفة الكورس التابعة له
         const lecture = await Lecture.findById(lectureId);
-        if (!lecture) {
-            return res.status(404).json({ message: 'المحاضرة غير موجودة' });
-        }
+        if (!lecture) return res.status(404).json({ message: 'المحاضرة غير موجودة' });
 
         let attendance = await Attendance.findOne({ lectureId });
-        
         if (!attendance) {
-            // إنشاء السجل مع تمرير الـ course
             attendance = new Attendance({ 
                 lectureId: lectureId,
-                course: lecture.courseId,
+                courseId: lecture.courseId || lecture.course,
                 students: [] 
             });
         }
@@ -149,14 +129,13 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
         }
 
         await attendance.save();
-        res.status(200).json({ message: 'تم التحديث يدوياً بنجاح' });
+        res.status(200).json({ message: 'تم التحديث بنجاح' });
     } catch (err) {
-        console.error('خطأ في التسجيل اليدوي:', err);
-        res.status(500).json({ message: err.message || 'خطأ في السيرفر' });
+        res.status(500).json({ message: err.message });
     }
 });
 
-// 5. إحصائيات الحضور والغياب للطالب
+// 5. إحصائيات الطالب
 router.get('/student-stats', verifyToken, async (req, res) => {
     try {
         const studentId = req.user.userId;
@@ -177,8 +156,7 @@ router.get('/student-stats', verifyToken, async (req, res) => {
 
         res.status(200).json({ presentCount, absentCount });
     } catch (error) {
-        console.error('خطأ في إحصائيات الطالب:', error);
-        res.status(500).json({ message: 'خطأ في السيرفر' });
+        res.status(500).json({ message: error.message });
     }
 });
 
