@@ -32,7 +32,7 @@ const verifyAdmin = (req, res, next) => {
 router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
-        const code = Math.floor(1000 + Math.random() * 9000).toString(); // كود 4 أرقام
+        const code = Math.floor(1000 + Math.random() * 9000).toString();
         
         let attendance = await Attendance.findOne({ lectureId });
         if (!attendance) {
@@ -43,6 +43,7 @@ router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
         await attendance.save();
         res.status(200).json({ message: 'تم توليد الكود بنجاح', code });
     } catch (err) {
+        console.error('خطأ في توليد الكود:', err);
         res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
@@ -50,7 +51,7 @@ router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
 // تسجيل الحضور للطالب بالكود
 router.post('/record', verifyToken, async (req, res) => {
     try {
-        const { courseId, lectureId, code } = req.body;
+        const { lectureId, code } = req.body;
         const studentId = req.user.userId;
 
         const attendance = await Attendance.findOne({ lectureId });
@@ -58,7 +59,7 @@ router.post('/record', verifyToken, async (req, res) => {
             return res.status(400).json({ message: 'كود الحضور غير صحيح' });
         }
 
-        let studentRecord = attendance.students.find(s => s.studentId.toString() === studentId);
+        let studentRecord = attendance.students.find(s => s.studentId && s.studentId.toString() === studentId);
         if (studentRecord) {
             studentRecord.status = 'present';
         } else {
@@ -68,6 +69,7 @@ router.post('/record', verifyToken, async (req, res) => {
         await attendance.save();
         res.status(200).json({ message: 'تم تسجيل حضورك بنجاح' });
     } catch (err) {
+        console.error('خطأ في تسجيل الحضور:', err);
         res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
@@ -77,7 +79,6 @@ router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
         const attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'phone');
-        
         const allStudents = await User.find({ role: 'student' }).select('phone');
         
         const report = allStudents.map(student => {
@@ -94,18 +95,19 @@ router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
             report
         });
     } catch (err) {
+        console.error('خطأ في جلب التقرير:', err);
         res.status(500).json({ message: 'خطأ في جلب التقرير' });
     }
 });
 
-// تسجيل يدوي من الأدمن
-// تسجيل يدوي من الأدمن
+// تسجيل يدوي من الأدمن (تم تحديثه ليدعم استقبال البيانات بمرونة تامة)
 router.post('/manual-record', verifyAdmin, async (req, res) => {
     try {
         const { studentId, lectureId, action } = req.body;
         
         if (!studentId || !lectureId || !action) {
-            return res.status(400).json({ message: 'جميع البيانات مطلوبة' });
+            console.log('بيانات ناقصة في التسجيل اليدوي:', req.body);
+            return res.status(400).json({ message: 'جميع البيانات مطلوبة (studentId, lectureId, action)' });
         }
 
         let attendance = await Attendance.findOne({ lectureId });
@@ -124,37 +126,33 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
         await attendance.save();
         res.status(200).json({ message: 'تم التحديث يدوياً بنجاح' });
     } catch (err) {
-        console.error('خطأ في التسجيل اليدوي:', err);
+        console.error('خطأ في التسجيل اليدوي (Server Catch):', err);
         res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
-// إحصائيات الحضور والغياب للطالب الحالي
+
 // إحصائيات الحضور والغياب الدقيقة للطالب الحالي
 router.get('/student-stats', verifyToken, async (req, res) => {
     try {
         const studentId = req.user.userId;
-        
-        // 1. جلب كل المحاضرات الموجودة في المنصة لحساب العدد الإجمالي
         const allLectures = await Lecture.find();
         const totalLecturesCount = allLectures.length;
 
-        // 2. جلب سجلات حضور الطالب
         const attendanceRecords = await Attendance.find({ 'students.studentId': studentId });
         
         let presentCount = 0;
         attendanceRecords.forEach(record => {
-            const studentRecord = record.students.find(s => s.studentId.toString() === studentId);
+            const studentRecord = record.students.find(s => s.studentId && s.studentId.toString() === studentId);
             if (studentRecord && studentRecord.status === 'present') {
                 presentCount++;
             }
         });
 
-        // المحاضرات التي غبت عنها هي الإجمالي ناقص ما حضره (ولا تقل عن صفر)
         let absentCount = Math.max(0, totalLecturesCount - presentCount);
 
         res.status(200).json({ presentCount, absentCount });
     } catch (error) {
-        console.error('خطأ في جلب إحصائيات الحضور:', error);
+        console.error('خطأ في إحصائيات الطالب:', error);
         res.status(500).json({ message: 'خطأ في السيرفر' });
     }
 });
