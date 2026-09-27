@@ -120,4 +120,49 @@ router.get('/users', verifyAdmin, async (req, res) => {
     }
 });
 
+// 5. مسار تحديث البيانات الشخصية (الاسم ورقم الهاتف)
+router.put('/profile', verifyToken, async (req, res) => {
+    try {
+        const { name, phone } = req.body;
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user.userId,
+            { name, phone },
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'المستخدم غير موجود' });
+        }
+        res.status(200).json({ message: 'تم التحديث بنجاح', user: updatedUser });
+    } catch (error) {
+        console.error('خطأ في تحديث البروفايل:', error);
+        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+    }
+});
+
+// 6. مسار تغيير كلمة المرور
+router.put('/change-password', verifyToken, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const user = await User.findById(req.user.userId);
+
+        if (!user) {
+            return res.status(404).json({ message: 'المستخدم غير موجود' });
+        }
+
+        const isMatch = await user.comparePassword(currentPassword);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'كلمة المرور الحالية غير صحيحة' });
+        }
+
+        user.password = newPassword; 
+        await user.save();
+
+        res.status(200).json({ message: 'تم تغيير كلمة المرور بنجاح' });
+    } catch (error) {
+        console.error('خطأ في تغيير كلمة المرور:', error);
+        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;
