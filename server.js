@@ -14,7 +14,7 @@ app.use(express.json());
 // ==========================================
 // 3. تفعيل المسارات (Routes)
 // ==========================================
-// استدعاء ملف تسجيل الدخول (تأكد إن عندك مجلد اسمه routes جواه ملف اسمه auth.js)
+// استدعاء ملف تسجيل الدخول 
 const authRoutes = require('./routes/auth'); 
 app.use('/api/auth', authRoutes);
 
@@ -29,13 +29,13 @@ app.get('/', (req, res) => {
 });
 
 // 5. الاتصال بقاعدة البيانات
-const MONGO_URI = process.env.MONGO_URI; // بيقرأ الرابط من ملف .env في Railway
+const MONGO_URI = process.env.MONGO_URI; 
 mongoose.connect(MONGO_URI)
     .then(() => console.log('✅ Connected to MongoDB'))
     .catch((err) => console.error('❌ MongoDB connection error:', err));
 
-// 6. تشغيل السيرفر على بورت Railway
+// 6. تشغيل السيرفر على بورت Railway مع فتح الاتصال الخارجي (0.0.0.0)
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server is running on port ${PORT}`);
 });
