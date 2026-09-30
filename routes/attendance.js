@@ -86,14 +86,16 @@ router.post('/record', verifyToken, async (req, res) => {
     }
 });
 
-// 3. تقرير حضور لمحاضرة واحدة
+// 3. تقرير حضور لمحاضرة واحدة (معدل لعرض طلاب الكورس فقط)
 router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
-        const { lectureId } = req.params;
+        const { courseId, lectureId } = req.params;
         let attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'name phone');
-        const allStudents = await User.find({ role: 'student' }).select('name phone');
         
-        const report = allStudents.map(student => {
+        // التعديل هنا: جلب الطلاب المسجلين في هذا الكورس فقط
+        const enrolledStudents = await User.find({ role: 'student', enrolledCourses: courseId }).select('name phone');
+        
+        const report = enrolledStudents.map(student => {
             const found = attendance ? attendance.students.find(s => s.studentId && s.studentId._id.toString() === student._id.toString()) : null;
             return {
                 studentId: student._id,
@@ -127,15 +129,17 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
     }
 });
 
-// 5. مسار التقرير المجمع للـ PDF (الجديد)
+// 5. مسار التقرير المجمع للـ PDF (معدل لعرض طلاب الكورس فقط)
 router.get('/aggregate-report/:courseId', verifyAdmin, async (req, res) => {
     try {
         const { courseId } = req.params;
         const lectures = await Lecture.find({ courseId }).sort({ createdAt: 1 });
-        const allStudents = await User.find({ role: 'student' }).select('name phone');
+        
+        // التعديل هنا: جلب الطلاب المسجلين في هذا الكورس فقط
+        const enrolledStudents = await User.find({ role: 'student', enrolledCourses: courseId }).select('name phone');
         const attendances = await Attendance.find({ courseId });
 
-        const report = allStudents.map(student => {
+        const report = enrolledStudents.map(student => {
             let attendedLectures = [];
             let totalAttended = 0;
 
