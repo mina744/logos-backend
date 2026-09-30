@@ -101,17 +101,18 @@ router.post('/record', verifyToken, async (req, res) => {
     }
 });
 
-// 3. تقرير الحضور للأدمن
+// 3. تقرير الحضور للأدمن (مع عرض الاسم ورقم التليفون)
 router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
-        let attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'phone');
-        const allStudents = await User.find({ role: 'student' }).select('phone');
+        let attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'name phone');
+        const allStudents = await User.find({ role: 'student' }).select('name phone');
         
         const report = allStudents.map(student => {
             const found = attendance ? attendance.students.find(s => s.studentId && s.studentId._id.toString() === student._id.toString()) : null;
             return {
                 studentId: student._id,
+                name: student.name || 'طالب جديد',
                 phone: student.phone,
                 status: found ? found.status : 'absent'
             };
