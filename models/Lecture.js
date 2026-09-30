@@ -12,7 +12,7 @@ const lectureSchema = new mongoose.Schema({
     },
     videoUrl: {
         type: String,
-        required: true
+        default: '' // اختياري عشان نقدر ننشئ الهيكل قبل الفيديو
     }
 }, { timestamps: true });
 

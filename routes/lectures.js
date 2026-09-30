@@ -1,12 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Lecture = require('../models/Lecture');
-const Course = require('../models/Course');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
 
-// Middleware للتحقق من التوكن
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -26,52 +24,58 @@ const verifyAdmin = (req, res, next) => {
     });
 };
 
-// 1. جلب محاضرات كورس معين
+// 1. جلب المحاضرات
 router.get('/:courseId', verifyToken, async (req, res) => {
     try {
-        const lectures = await Lecture.find({ courseId: req.params.courseId });
+        const lectures = await Lecture.find({ courseId: req.params.courseId }).sort({ createdAt: 1 });
         res.status(200).json(lectures);
     } catch (err) {
-        console.error('خطأ في جلب المحاضرات:', err);
         res.status(500).json({ message: 'حدث خطأ في السيرفر' });
     }
 });
 
-// 2. إضافة محاضرة جديدة لكورس معين
+// 2. إضافة محاضرة (الفيديو اختياري)
 router.post('/:courseId', verifyAdmin, async (req, res) => {
     try {
         const { title, videoUrl } = req.body;
-        const courseId = req.params.courseId; // جلب الـ ID من الرابط
+        if (!title) return res.status(400).json({ message: 'عنوان المحاضرة مطلوب' });
 
-        if (!title || !videoUrl) {
-            return res.status(400).json({ message: 'العنوان ورابط الفيديو مطلوبان' });
-        }
-
-        // إنشاء المحاضرة وربطها بالكورس
         const newLecture = new Lecture({
-            courseId: courseId,
+            courseId: req.params.courseId,
             title,
-            videoUrl
+            videoUrl: videoUrl || ''
         });
 
         await newLecture.save();
         res.status(201).json({ message: 'تم إضافة المحاضرة بنجاح', lecture: newLecture });
     } catch (error) {
-        console.error('خطأ في إضافة المحاضرة:', error);
-        res.status(500).json({ message: error.message || 'حدث خطأ في السيرفر' });
+        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
     }
 });
 
-// 3. حذف محاضرة
+// 3. تعديل المحاضرة (لإضافة الفيديو لاحقاً)
+router.put('/:id', verifyAdmin, async (req, res) => {
+    try {
+        const { title, videoUrl } = req.body;
+        const updatedLecture = await Lecture.findByIdAndUpdate(
+            req.params.id,
+            { title, videoUrl: videoUrl || '' },
+            { new: true }
+        );
+        if (!updatedLecture) return res.status(404).json({ message: 'المحاضرة غير موجودة' });
+        res.status(200).json({ message: 'تم التعديل بنجاح', lecture: updatedLecture });
+    } catch (err) {
+        res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+    }
+});
+
+// 4. حذف المحاضرة
 router.delete('/:id', verifyAdmin, async (req, res) => {
     try {
         const deletedLecture = await Lecture.findByIdAndDelete(req.params.id);
-        if (!deletedLecture) {
-            return res.status(404).json({ message: 'المحاضرة غير موجودة' });
-        }
+        if (!deletedLecture) return res.status(404).json({ message: 'المحاضرة غير موجودة' });
         res.status(200).json({ message: 'تم حذف المحاضرة بنجاح' });
     } catch (err) {
-        console.error('خطأ في حذف المحاضرة:', err);
         res.status(500).json({ message: 'حدث خطأ في السيرفر' });
     }
 });
