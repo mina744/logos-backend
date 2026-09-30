@@ -1,19 +1,19 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const compression = require('compression'); // 1. استدعاء مكتبة الضغط
 require('dotenv').config();
 
 const app = express();
+
+// 2. تفعيل الضغط لتقليل حجم البيانات وتسريع الاستجابة جداً
+app.use(compression());
 
 // 1. تفعيل CORS عشان Vercel يقدر يكلم السيرفر
 app.use(cors());
 
 // 2. السماح للسيرفر بقراءة البيانات المرسلة
 app.use(express.json());
-
-
-
-
 
 // ==========================================
 // 3. تفعيل المسارات (Routes)
@@ -26,21 +26,14 @@ app.use('/api/auth', authRoutes);
 const courseRoutes = require('./routes/courses');
 app.use('/api/courses', courseRoutes);
 
-// مسار المحاضرات (تمت إضافته هنا لحل المشكلة)
+// مسار المحاضرات
 const lectureRoutes = require('./routes/lectures');
 app.use('/api/lectures', lectureRoutes);
 // ==========================================
 
-
 // مسار الحضور (Attendance)
 const attendanceRoutes = require('./routes/attendance');
 app.use('/api/attendance', attendanceRoutes);
-
-
-
-
-
-
 
 // 4. راوت تجريبي للتأكد إن السيرفر شغال
 app.get('/', (req, res) => {
