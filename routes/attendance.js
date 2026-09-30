@@ -86,7 +86,7 @@ router.post('/record', verifyToken, async (req, res) => {
     }
 });
 
-// 3. تقرير حضور لمحاضرة واحدة (لطلاب الكورس فقط)
+// 3. تقرير حضور لمحاضرة واحدة 
 router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { courseId, lectureId } = req.params;
@@ -127,7 +127,7 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
     }
 });
 
-// 5. مسار التقرير المجمع للـ PDF (لطلاب الكورس فقط)
+// 5. مسار التقرير المجمع للـ PDF 
 router.get('/aggregate-report/:courseId', verifyAdmin, async (req, res) => {
     try {
         const { courseId } = req.params;
@@ -168,31 +168,26 @@ router.get('/aggregate-report/:courseId', verifyAdmin, async (req, res) => {
 router.get('/student-stats', verifyToken, async (req, res) => {
     try {
         const studentId = req.user.userId;
-        
-        // 1. جلب الطالب لمعرفة الكورسات اللي هو مشترك فيها
         const student = await User.findById(studentId);
-        if (!student) {
-            return res.status(404).json({ message: 'الطالب غير موجود' });
-        }
+        
+        if (!student) return res.status(404).json({ message: 'الطالب غير موجود' });
 
         const enrolledCourses = student.enrolledCourses || [];
+        if (enrolledCourses.length === 0) return res.status(200).json({ presentCount: 0, absentCount: 0 });
 
-        // لو مش مشترك في أي كورس، الحضور والغياب 0
-        if (enrolledCourses.length === 0) {
-            return res.status(200).json({ presentCount: 0, absentCount: 0 });
-        }
+        // التعديل: جلب المحاضرات الفعالة فقط اللي لسة موجودة في الكورسات المشترك فيها
+        const activeLectures = await Lecture.find({ courseId: { $in: enrolledCourses } });
+        const activeLectureIds = activeLectures.map(lec => lec._id);
 
-        // 2. إجمالي عدد المحاضرات في الكورسات اللي هو مشترك فيها فقط
-        const totalLecturesCount = await Lecture.countDocuments({ courseId: { $in: enrolledCourses } });
+        const totalLecturesCount = activeLectureIds.length;
 
-        // 3. عدد المحاضرات اللي الطالب حضرها
+        // حساب الحضور بس للمحاضرات اللي لسة موجودة
         const attendanceRecords = await Attendance.find({
+            lectureId: { $in: activeLectureIds },
             'students': { $elemMatch: { studentId: studentId, status: 'present' } }
         });
         
         const presentCount = attendanceRecords.length;
-
-        // 4. الغياب = إجمالي محاضرات كورساته ناقص عدد مرات حضوره
         const absentCount = Math.max(0, totalLecturesCount - presentCount);
 
         res.status(200).json({ presentCount, absentCount });
