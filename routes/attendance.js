@@ -73,7 +73,11 @@ router.post('/record', verifyToken, async (req, res) => {
         const studentId = req.user.userId;
 
         const attendance = await Attendance.findOne({ lectureId });
-        if (!attendance || attendance.attendanceCode !== code) {
+        if (!attendance || !attendance.attendanceCode) {
+            return res.status(400).json({ message: 'لم يتم إصدار كود حضور لهذه المحاضرة بعد' });
+        }
+
+        if (attendance.attendanceCode !== code.trim()) {
             return res.status(400).json({ message: 'كود الحضور غير صحيح' });
         }
 
@@ -85,7 +89,7 @@ router.post('/record', verifyToken, async (req, res) => {
         }
 
         await attendance.save();
-        res.status(200).json({ message: 'تم تسجيل حضورك بنجاح' });
+        res.status(200).json({ message: 'تم تسجيل حضورك بنجاح!' });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
