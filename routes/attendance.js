@@ -2,21 +2,11 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Attendance = require('../models/Attendance');
-const Lecture = require('../models/Lecture');
+const Course = require('../models/Course');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
-
-// 🚀 مسار مؤقت لإصلاح مشكلة قاعدة البيانات (امسح الداتا القديمة)
-router.get('/fix-db', async (req, res) => {
-    try {
-        await mongoose.connection.collection('attendances').drop();
-        res.status(200).json({ message: 'تم تنظيف قاعدة البيانات وحذف القواعد القديمة بنجاح! يمكنك الآن تجربة توليد الكود.' });
-    } catch (err) {
-        res.status(200).json({ message: 'تم التنظيف مسبقاً أو الجدول غير موجود.', error: err.message });
-    }
-});
 
 // Middleware للتحقق من التوكن
 const verifyToken = (req, res, next) => {
@@ -39,20 +29,19 @@ const verifyAdmin = (req, res, next) => {
     });
 };
 
-// 1. توليد كود حضور للمحاضرة
-router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
+// 1. توليد كود حضور منفصل للكورس
+router.post('/generate-course-code/:courseId', verifyAdmin, async (req, res) => {
     try {
-        const { lectureId } = req.params;
-        const lecture = await Lecture.findById(lectureId);
-        if (!lecture) return res.status(404).json({ message: 'المحاضرة غير موجودة' });
+        const { courseId } = req.params;
+        const course = await Course.findById(courseId);
+        if (!course) return res.status(404).json({ message: 'الكورس غير موجود' });
 
         const code = Math.floor(1000 + Math.random() * 9000).toString();
         
-        let attendance = await Attendance.findOne({ lectureId });
+        let attendance = await Attendance.findOne({ courseId, lectureId: { $exists: false } });
         if (!attendance) {
             attendance = new Attendance({ 
-                lectureId: lectureId, 
-                courseId: lecture.courseId || lecture.course, 
+                courseId: courseId, 
                 attendanceCode: code, 
                 students: [] 
             });
@@ -60,21 +49,21 @@ router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
             attendance.attendanceCode = code;
         }
         await attendance.save();
-        res.status(200).json({ message: 'تم توليد الكود بنجاح', code });
+        res.status(200).json({ message: 'تم توليد كود الحضور بنجاح', code });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 });
 
-// 2. تسجيل الحضور للطالب بالكود (مع منع تكرار التسجيل)
-router.post('/record', verifyToken, async (req, res) => {
+// 2. تسجيل الحضور للطالب بالكود المنفصل للكورس (مع منع تكرار التسجيل)
+router.post('/record-course', verifyToken, async (req, res) => {
     try {
-        const { lectureId, code } = req.body;
+        const { courseId, code } = req.body;
         const studentId = req.user.userId;
 
-        const attendance = await Attendance.findOne({ lectureId });
+        const attendance = await Attendance.findOne({ courseId, lectureId: { $exists: false } });
         if (!attendance || !attendance.attendanceCode) {
-            return res.status(400).json({ message: 'لم يتم إصدار كود حضور لهذه المحاضرة بعد' });
+            return res.status(400).json({ message: 'لم يتم إصدار كود حضور لهذا الكورس بعد' });
         }
 
         if (attendance.attendanceCode !== code.trim()) {
@@ -83,9 +72,8 @@ router.post('/record', verifyToken, async (req, res) => {
 
         let studentRecord = attendance.students.find(s => s.studentId && s.studentId.toString() === studentId);
         
-        // التحقق مما إذا كان الطالب مسجلاً حضوراً بالفعل مسبقاً
         if (studentRecord && studentRecord.status === 'present') {
-            return res.status(400).json({ message: 'لقد قمت بتسجيل حضورك مسبقاً لهذه المحاضرة!' });
+            return res.status(400).json({ message: 'لقد قمت بتسجيل حضورك مسبقاً لهذا الكورس!' });
         }
 
         if (studentRecord) {
@@ -101,11 +89,11 @@ router.post('/record', verifyToken, async (req, res) => {
     }
 });
 
-// 3. تقرير الحضور للأدمن (مع عرض الاسم ورقم التليفون)
-router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
+// 3. تقرير الحضور للأدمن للكورس
+router.get('/course-report/:courseId', verifyAdmin, async (req, res) => {
     try {
-        const { lectureId } = req.params;
-        let attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'name phone');
+        const { courseId } = req.params;
+        let attendance = await Attendance.findOne({ courseId, lectureId: { $exists: false } }).populate('students.studentId', 'name phone');
         const allStudents = await User.find({ role: 'student' }).select('name phone');
         
         const report = allStudents.map(student => {
@@ -127,20 +115,16 @@ router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     }
 });
 
-// 4. تسجيل يدوي من الأدمن
-router.post('/manual-record', verifyAdmin, async (req, res) => {
+// 4. تسجيل يدوي من الأدمن للكورس
+router.post('/manual-course-record', verifyAdmin, async (req, res) => {
     try {
-        const { studentId, lectureId, action } = req.body;
-        if (!studentId || !lectureId || !action) return res.status(400).json({ message: 'البيانات ناقصة' });
+        const { studentId, courseId, action } = req.body;
+        if (!studentId || !courseId || !action) return res.status(400).json({ message: 'البيانات ناقصة' });
 
-        const lecture = await Lecture.findById(lectureId);
-        if (!lecture) return res.status(404).json({ message: 'المحاضرة غير موجودة' });
-
-        let attendance = await Attendance.findOne({ lectureId });
+        let attendance = await Attendance.findOne({ courseId, lectureId: { $exists: false } });
         if (!attendance) {
             attendance = new Attendance({ 
-                lectureId: lectureId,
-                courseId: lecture.courseId || lecture.course,
+                courseId: courseId,
                 students: [] 
             });
         }
@@ -156,31 +140,6 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
         res.status(200).json({ message: 'تم التحديث بنجاح' });
     } catch (err) {
         res.status(500).json({ message: err.message });
-    }
-});
-
-// 5. إحصائيات الطالب
-router.get('/student-stats', verifyToken, async (req, res) => {
-    try {
-        const studentId = req.user.userId;
-        const allLectures = await Lecture.find();
-        const totalLecturesCount = allLectures.length;
-
-        const attendanceRecords = await Attendance.find({ 'students.studentId': studentId });
-        
-        let presentCount = 0;
-        attendanceRecords.forEach(record => {
-            const studentRecord = record.students.find(s => s.studentId && s.studentId.toString() === studentId);
-            if (studentRecord && studentRecord.status === 'present') {
-                presentCount++;
-            }
-        });
-
-        let absentCount = Math.max(0, totalLecturesCount - presentCount);
-
-        res.status(200).json({ presentCount, absentCount });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
     }
 });
 
