@@ -86,13 +86,11 @@ router.post('/record', verifyToken, async (req, res) => {
     }
 });
 
-// 3. تقرير حضور لمحاضرة واحدة (معدل لعرض طلاب الكورس فقط)
+// 3. تقرير حضور لمحاضرة واحدة (لطلاب الكورس فقط)
 router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { courseId, lectureId } = req.params;
         let attendance = await Attendance.findOne({ lectureId }).populate('students.studentId', 'name phone');
-        
-        // التعديل هنا: جلب الطلاب المسجلين في هذا الكورس فقط
         const enrolledStudents = await User.find({ role: 'student', enrolledCourses: courseId }).select('name phone');
         
         const report = enrolledStudents.map(student => {
@@ -129,13 +127,11 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
     }
 });
 
-// 5. مسار التقرير المجمع للـ PDF (معدل لعرض طلاب الكورس فقط)
+// 5. مسار التقرير المجمع للـ PDF (لطلاب الكورس فقط)
 router.get('/aggregate-report/:courseId', verifyAdmin, async (req, res) => {
     try {
         const { courseId } = req.params;
         const lectures = await Lecture.find({ courseId }).sort({ createdAt: 1 });
-        
-        // التعديل هنا: جلب الطلاب المسجلين في هذا الكورس فقط
         const enrolledStudents = await User.find({ role: 'student', enrolledCourses: courseId }).select('name phone');
         const attendances = await Attendance.find({ courseId });
 
@@ -165,6 +161,43 @@ router.get('/aggregate-report/:courseId', verifyAdmin, async (req, res) => {
         res.status(200).json({ report, totalLectures: lectures.length });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+// 6. إحصائيات الطالب الشخصية (لصفحة الـ Profile)
+router.get('/student-stats', verifyToken, async (req, res) => {
+    try {
+        const studentId = req.user.userId;
+        
+        // 1. جلب الطالب لمعرفة الكورسات اللي هو مشترك فيها
+        const student = await User.findById(studentId);
+        if (!student) {
+            return res.status(404).json({ message: 'الطالب غير موجود' });
+        }
+
+        const enrolledCourses = student.enrolledCourses || [];
+
+        // لو مش مشترك في أي كورس، الحضور والغياب 0
+        if (enrolledCourses.length === 0) {
+            return res.status(200).json({ presentCount: 0, absentCount: 0 });
+        }
+
+        // 2. إجمالي عدد المحاضرات في الكورسات اللي هو مشترك فيها فقط
+        const totalLecturesCount = await Lecture.countDocuments({ courseId: { $in: enrolledCourses } });
+
+        // 3. عدد المحاضرات اللي الطالب حضرها
+        const attendanceRecords = await Attendance.find({
+            'students': { $elemMatch: { studentId: studentId, status: 'present' } }
+        });
+        
+        const presentCount = attendanceRecords.length;
+
+        // 4. الغياب = إجمالي محاضرات كورساته ناقص عدد مرات حضوره
+        const absentCount = Math.max(0, totalLecturesCount - presentCount);
+
+        res.status(200).json({ presentCount, absentCount });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
 });
 
