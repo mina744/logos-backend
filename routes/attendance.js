@@ -8,11 +8,10 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
 
-// 🚀 مسار تنظيف قاعدة البيانات
 router.get('/fix-db', async (req, res) => {
     try {
         await mongoose.connection.collection('attendances').drop();
-        res.status(200).json({ message: 'تم تنظيف قاعدة البيانات القديمة بنجاح! يمكنك تجربة التوليد الآن.' });
+        res.status(200).json({ message: 'تم تنظيف قاعدة البيانات القديمة بنجاح!' });
     } catch (err) {
         res.status(200).json({ message: 'الجدول نظيف مسبقاً.' });
     }
@@ -37,7 +36,7 @@ const verifyAdmin = (req, res, next) => {
     });
 };
 
-// توليد كود حضور للمحاضرة
+// 1. توليد كود
 router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
@@ -64,7 +63,7 @@ router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
     }
 });
 
-// تسجيل الطالب بالكود
+// 2. تسجيل الطالب
 router.post('/record', verifyToken, async (req, res) => {
     try {
         const { lectureId, code } = req.body;
@@ -75,9 +74,7 @@ router.post('/record', verifyToken, async (req, res) => {
         if (attendance.attendanceCode !== code.trim()) return res.status(400).json({ message: 'الكود غير صحيح' });
 
         let studentRecord = attendance.students.find(s => s.studentId && s.studentId.toString() === studentId);
-        if (studentRecord && studentRecord.status === 'present') {
-            return res.status(400).json({ message: 'تم تسجيل حضورك مسبقاً!' });
-        }
+        if (studentRecord && studentRecord.status === 'present') return res.status(400).json({ message: 'تم تسجيل حضورك مسبقاً!' });
 
         if (studentRecord) studentRecord.status = 'present';
         else attendance.students.push({ studentId, status: 'present' });
@@ -89,7 +86,7 @@ router.post('/record', verifyToken, async (req, res) => {
     }
 });
 
-// تقرير الحضور للأدمن
+// 3. تقرير حضور لمحاضرة واحدة
 router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
     try {
         const { lectureId } = req.params;
@@ -105,23 +102,19 @@ router.get('/report/:courseId/:lectureId', verifyAdmin, async (req, res) => {
                 status: found ? found.status : 'absent'
             };
         });
-
         res.status(200).json({ attendanceCode: attendance ? attendance.attendanceCode : null, report });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 });
 
-// تسجيل يدوي
+// 4. تحديث يدوي
 router.post('/manual-record', verifyAdmin, async (req, res) => {
     try {
         const { studentId, lectureId, action } = req.body;
         const lecture = await Lecture.findById(lectureId);
-        
         let attendance = await Attendance.findOne({ lectureId });
-        if (!attendance) {
-            attendance = new Attendance({ lectureId, courseId: lecture.courseId, students: [] });
-        }
+        if (!attendance) attendance = new Attendance({ lectureId, courseId: lecture.courseId, students: [] });
 
         let studentRecord = attendance.students.find(s => s.studentId && s.studentId.toString() === studentId);
         if (studentRecord) studentRecord.status = action;
@@ -129,6 +122,43 @@ router.post('/manual-record', verifyAdmin, async (req, res) => {
 
         await attendance.save();
         res.status(200).json({ message: 'تم التحديث بنجاح' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// 5. مسار التقرير المجمع للـ PDF (الجديد)
+router.get('/aggregate-report/:courseId', verifyAdmin, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const lectures = await Lecture.find({ courseId }).sort({ createdAt: 1 });
+        const allStudents = await User.find({ role: 'student' }).select('name phone');
+        const attendances = await Attendance.find({ courseId });
+
+        const report = allStudents.map(student => {
+            let attendedLectures = [];
+            let totalAttended = 0;
+
+            lectures.forEach((lec) => {
+                const lecAttendance = attendances.find(a => a.lectureId && a.lectureId.toString() === lec._id.toString());
+                if (lecAttendance) {
+                    const studentRecord = lecAttendance.students.find(s => s.studentId && s.studentId.toString() === student._id.toString());
+                    if (studentRecord && studentRecord.status === 'present') {
+                        attendedLectures.push(lec.title);
+                        totalAttended++;
+                    }
+                }
+            });
+
+            return {
+                name: student.name || 'طالب غير محدد',
+                phone: student.phone,
+                attendedLectures: attendedLectures.length > 0 ? attendedLectures.join(' ، ') : 'لم يحضر أي محاضرة',
+                totalAttended
+            };
+        });
+
+        res.status(200).json({ report, totalLectures: lectures.length });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
