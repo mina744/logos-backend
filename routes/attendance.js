@@ -66,7 +66,7 @@ router.post('/generate-code/:lectureId', verifyAdmin, async (req, res) => {
     }
 });
 
-// 2. تسجيل الحضور للطالب بالكود
+// 2. تسجيل الحضور للطالب بالكود (مع منع تكرار التسجيل)
 router.post('/record', verifyToken, async (req, res) => {
     try {
         const { lectureId, code } = req.body;
@@ -82,6 +82,12 @@ router.post('/record', verifyToken, async (req, res) => {
         }
 
         let studentRecord = attendance.students.find(s => s.studentId && s.studentId.toString() === studentId);
+        
+        // التحقق مما إذا كان الطالب مسجلاً حضوراً بالفعل مسبقاً
+        if (studentRecord && studentRecord.status === 'present') {
+            return res.status(400).json({ message: 'لقد قمت بتسجيل حضورك مسبقاً لهذه المحاضرة!' });
+        }
+
         if (studentRecord) {
             studentRecord.status = 'present';
         } else {
