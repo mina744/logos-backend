@@ -8,6 +8,16 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'logos_super_secret_key_2026';
 
+// 🚀 مسار مؤقت لإصلاح مشكلة قاعدة البيانات (امسح الداتا القديمة)
+router.get('/fix-db', async (req, res) => {
+    try {
+        await mongoose.connection.collection('attendances').drop();
+        res.status(200).json({ message: 'تم تنظيف قاعدة البيانات وحذف القواعد القديمة بنجاح! يمكنك الآن تجربة توليد الكود.' });
+    } catch (err) {
+        res.status(200).json({ message: 'تم التنظيف مسبقاً أو الجدول غير موجود.', error: err.message });
+    }
+});
+
 // Middleware للتحقق من التوكن
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
